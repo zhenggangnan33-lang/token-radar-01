@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Token Radar — which pre-token protocols are worth a launch</title>
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand"><span class="dot"></span>TOKEN RADAR</div>
+  <div class="top-sub" id="top-sub">Sealed snapshot · model radar-2</div>
+</header>
+<main>
+  <section class="kpis" id="kpis" aria-label="Headline figures"></section>
+  <section class="method-strip" id="method-strip" aria-label="How the ranking works"></section>
+  <section class="controls" aria-label="Board controls">
+    <input id="q" type="search" placeholder="Search name, slug or category" aria-label="Search">
+    <select id="cat" aria-label="Category"></select>
+    <select id="verdict" aria-label="Farm verdict">
+      <option value="">All verdicts</option>
+      <option value="FARM">FARM</option>
+      <option value="THIN">THIN</option>
+      <option value="SKIP">SKIP</option>
+    </select>
+    <label class="wl"><input id="wl" type="checkbox"> Watchlist only</label>
+    <select id="sort" aria-label="Sort by">
+      <option value="implied">Sort: implied value</option>
+      <option value="tvl">Sort: TVL</option>
+      <option value="growth">Sort: 7d growth</option>
+      <option value="age">Sort: age</option>
+      <option value="odds">Sort: launch odds</option>
+      <option value="breakeven">Sort: break-even deposit</option>
+    </select>
+  </section>
+  <p class="count" id="count"></p>
+  <section class="board-wrap">
+    <table class="board" id="board">
+      <thead><tr>
+        <th class="num">#</th><th>Protocol</th><th class="num">TVL</th><th class="num">7d</th>
+        <th class="num">Age</th><th class="num">Multiple</th><th class="num">Implied value</th>
+        <th class="num">Launch odds</th><th>Verdict</th><th class="num">Data</th>
+      </tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </section>
+  <section class="method" id="method" aria-label="Method in full"></section>
+  <section class="live" id="live" aria-label="Live-token anchors"></section>
+  <footer class="foot" id="foot"></footer>
+</main>
+<dialog id="detail" class="detail"></dialog>
+<script src="../data.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
