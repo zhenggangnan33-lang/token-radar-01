@@ -7,8 +7,9 @@
 //
 // The dashboard is a static page, no framework and no network: dashboard/index.html, dashboard/app.css
 // and dashboard/app.js read /output/data.js, which this program writes from the same board. The model
-// is radar-2: category-median comps multiples fitted from the traded protocols in the same snapshot,
-// held out twice, launch odds from the peers' age record, and costed farm verdicts.
+// is radar-3: a Theil-Sen power law on TVL fitted from the traded protocols in the same snapshot,
+// held out three ways (leave-one-out, time, slug parity) against a flat-0.25 baseline and the
+// radar-2 category-median model, launch odds from the peers' age record, and costed farm verdicts.
 //
 // Outside the grader's container, MAKEFUN_OUTPUT_DIR stands in for /output:
 //   mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts --input ../input/snapshot.json
