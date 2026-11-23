@@ -48,6 +48,8 @@ table.board{width:100%;border-collapse:collapse;min-width:960px}
 .method th,.live th{color:var(--mut);font:600 11px var(--mono);text-transform:uppercase;letter-spacing:.05em}
 .method td.num,.live td.num,.method th.num,.live th.num{text-align:right;font-family:var(--mono)}
 .method .two{display:grid;grid-template-columns:1fr 1fr;gap:0 28px}
+.scrollbox{max-height:460px;overflow:auto;border:1px solid var(--line);border-radius:10px}
+.scrollbox table{border:0;border-radius:0}
 .foot{margin-top:30px;padding-top:14px;border-top:1px solid var(--line);color:var(--dim);font-size:12px}
 .foot p{margin:4px 0}
 dialog.detail{border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:12px;max-width:640px;width:calc(100vw - 40px);max-height:calc(100vh - 40px);overflow:auto;padding:0}

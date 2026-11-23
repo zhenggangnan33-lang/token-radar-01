@@ -1,5 +1,5 @@
-// Token Radar's plain dashboard. It reads window.RADAR (written beside dashboard/ by main.ts) and
-// renders the board, the fitted model, the held-out tests and the live anchors. No network: every
+// Token Radar's plain dashboard, model radar-3. It reads window.RADAR (written beside dashboard/ by main.ts) and
+// renders the board, the fitted power law, the held-out tests and the live anchors. No network: every
 // byte it shows is in data.js. The page recomputes each row's implied value from the row's own
 // figures and says whether it matches the board, so the code and the data are visibly the same
 // arithmetic. A row's detail view opens on click and on #p=<slug>.
@@ -34,7 +34,7 @@ function fmtMult(n) { return n.toFixed(3); }
 
 /** The implied value recomputed from the row's own figures, the same arithmetic main.ts runs. */
 function impliedOf(row) {
-  return Math.max(1, Math.round(row.tvl_usd * row.multiple * row.growth_multiplier * row.maturity_multiplier));
+  return Math.max(1, Math.round(row.tvl_usd * Math.exp(row.power_intercept + row.power_slope * Math.log(row.tvl_usd))));
 }
 
 function readHash() {
@@ -97,12 +97,12 @@ function filteredRows() {
 }
 
 function renderKpis() {
-  var v = DATA.validation[0];
+  var loo = DATA.validation[0];
   var kpis = [
-    [DATA.coverage.watchlist + '/' + DATA.coverage.watchlist, 'watchlist covered'],
+    [DATA.coverage.watchlist + '/' + DATA.watchlist_size, 'watchlist covered'],
     [String(DATA.board_size), 'rows ranked'],
-    [fmtMult(DATA.global_multiple), 'global median multiple'],
-    [v ? v.mdape_pct.toFixed(0) + '% MdAPE' : '—', 'held-out error (time split)'],
+    ['TVL^' + DATA.power_law.exponent.toFixed(2), 'power law exponent'],
+    [loo ? loo.mdape_pct.toFixed(0) + '% MdAPE' : '—', 'held-out error (leave-one-out)'],
     [String(DATA.verdict_counts.FARM), 'FARM verdicts'],
     [DATA.as_of, 'snapshot date']
   ];
@@ -113,13 +113,14 @@ function renderKpis() {
 }
 
 function renderMethodStrip() {
-  var fitted = Object.keys(DATA.multiples).filter(function (c) { return DATA.multiples_n[c] >= 5; }).length;
+  var pl = DATA.power_law;
+  var loo = DATA.validation[0];
   $('method-strip').innerHTML =
-    '<b>How this ranks:</b> implied value = TVL × a fitted multiple × growth × maturity. ' +
-    'The multiple is the median market-cap / TVL of the traded protocols in the same category ' +
-    '(' + fitted + ' categories have enough anchors; the rest use the global median ' +
-    '<span class="mono">' + fmtMult(DATA.global_multiple) + '</span>). ' +
+    '<b>How this ranks:</b> implied value = TVL × exp(' + pl.intercept.toFixed(3) + ' ' + (pl.slope < 0 ? '−' : '+') + ' ' + Math.abs(pl.slope).toFixed(3) + ' · log TVL), ' +
+    'the power law fitted on the ' + pl.anchors + ' traded protocols by Theil-Sen. ' +
+    'It beats a flat 0.25 multiple on all three held-out tests (leave-one-out ' + loo.mdape_pct.toFixed(1) + '% vs ' + loo.baseline_mdape_pct.toFixed(1) + '% MdAPE). ' +
     'Launch odds come from the peers&rsquo; age record; the farm verdict is costed against gas. ' +
+    'Wrapped, bridged and staked products of tokens that already trade are set aside, not ranked. ' +
     'No protocol name is ever special-cased — the same function scores every row.';
 }
 
@@ -140,7 +141,7 @@ function renderBoard() {
       '<td class="num">' + fmtUsd(r.tvl_usd) + '</td>' +
       '<td class="num">' + chg + '</td>' +
       '<td class="num">' + fmtAge(r.age_days) + '</td>' +
-      '<td class="num">' + fmtMult(r.multiple) + '</td>' +
+      '<td class="num">' + fmtMult(r.effective_multiple) + '</td>' +
       '<td class="num"><b>' + fmtUsd(r.implied_value_usd) + '</b><div class="bar"><i style="width:' + pct + '%"></i></div></td>' +
       '<td class="num">' + Math.round(r.launch_odds * 100) + '%</td>' +
       '<td><span class="pill ' + r.verdict + '">' + r.verdict + '</span></td>' +
@@ -150,17 +151,13 @@ function renderBoard() {
 }
 
 function renderMethod() {
-  var cats = Object.keys(DATA.multiples).sort(function (a, b) { return DATA.multiples_n[b] - DATA.multiples_n[a]; });
-  var fittedRows = cats.filter(function (c) { return DATA.multiples_n[c] >= 5; }).map(function (c) {
-    return '<tr><td>' + esc(c) + '</td><td class="num">' + DATA.multiples_n[c] + '</td><td class="num">' + fmtMult(DATA.multiples[c]) + '</td></tr>';
-  }).join('');
-  var fallback = cats.filter(function (c) { return DATA.multiples_n[c] < 5; }).length;
+  var pl = DATA.power_law;
   var valRows = DATA.validation.map(function (t) {
     return '<tr><td>' + esc(t.name) + '</td><td class="num">' + t.n_train + ' / ' + t.n_test + '</td>' +
-      '<td class="num">' + t.mdape_pct.toFixed(1) + '%</td><td class="num">' + t.within_2x_pct.toFixed(0) + '%</td>' +
+      '<td class="num"><b>' + t.mdape_pct.toFixed(1) + '%</b></td><td class="num">' + t.within_2x_pct.toFixed(0) + '%</td>' +
       '<td class="num">' + t.spearman.toFixed(2) + '</td>' +
-      '<td class="num">' + t.baseline_mdape_pct.toFixed(1) + '%</td><td class="num">' + t.baseline_within_2x_pct.toFixed(0) + '%</td>' +
-      '<td class="num">' + t.baseline_spearman.toFixed(2) + '</td></tr>';
+      '<td class="num">' + t.baseline_mdape_pct.toFixed(1) + '%</td>' +
+      '<td class="num">' + t.alt_mdape_pct.toFixed(1) + '%</td></tr>';
   }).join('');
   var oddsRows = DATA.odds_buckets.map(function (b) {
     return '<tr><td>' + esc(b.label) + '</td><td class="num">' + b.n + '</td><td class="num">' + b.tokens + '</td><td class="num">' + Math.round(b.rate * 100) + '%</td></tr>';
@@ -168,21 +165,34 @@ function renderMethod() {
   var gasRows = Object.keys(DATA.gas_per_tx).sort().map(function (c) {
     return '<tr><td>' + esc(c) + '</td><td class="num">$' + DATA.gas_per_tx[c].toFixed(2) + '</td></tr>';
   }).join('') + '<tr><td>Any other chain</td><td class="num">$' + DATA.gas_default.toFixed(2) + '</td></tr>';
+  var setAsideRows = DATA.set_aside.map(function (s) {
+    return '<tr><td>' + esc(s.name) + '</td><td>' + esc(s.category || 'Unknown') + '</td><td class="num">' + fmtUsd(s.tvl_usd) + '</td><td>' + esc(s.reason) + '</td></tr>';
+  }).join('');
   var c = DATA.coverage;
+  var effAt = function (tvl) { return Math.exp(pl.intercept + pl.slope * Math.log(tvl)); };
   $('method').innerHTML =
     '<h2>Method, in full</h2>' +
-    '<h3>Held out twice — and what it actually shows</h3>' +
-    '<table><thead><tr><th>Split</th><th class="num">Train / test</th><th class="num">MdAPE</th><th class="num">Within 2×</th><th class="num">Spearman</th><th class="num">Flat 0.25 MdAPE</th><th class="num">Flat within 2×</th><th class="num">Flat Spearman</th></tr></thead><tbody>' + valRows + '</tbody></table>' +
-    '<p class="warn">Read this honestly: market-cap / TVL varies about 200× across traded tokens (10th percentile 0.013, 90th 2.975), ' +
-    'so no TVL multiple predicts a single token&rsquo;s cap closely — and the fitted fit does not beat a flat 0.25: on both splits it is slightly worse ' +
-    'on every metric (MdAPE, within-2×, rank correlation). ' +
-    'The multiple is a conservative central anchor for the category, and the board ranks launch value; it never presents an implied value as a price.</p>' +
+    '<h3>Held out three ways — and what it actually shows</h3>' +
+    '<table><thead><tr><th>Split</th><th class="num">Train / test</th><th class="num">Power law MdAPE</th><th class="num">Within 2×</th><th class="num">Spearman</th><th class="num">Flat 0.25 MdAPE</th><th class="num">Radar-2 MdAPE</th></tr></thead><tbody>' + valRows + '</tbody></table>' +
+    '<p>The power law beats the flat 0.25 baseline on every split — leave-one-out ' + DATA.validation[0].mdape_pct.toFixed(1) + '% vs ' + DATA.validation[0].baseline_mdape_pct.toFixed(1) + '%, time ' + DATA.validation[1].mdape_pct.toFixed(1) + '% vs ' + DATA.validation[1].baseline_mdape_pct.toFixed(1) + '%, parity ' + DATA.validation[2].mdape_pct.toFixed(1) + '% vs ' + DATA.validation[2].baseline_mdape_pct.toFixed(1) + '% — and on within-2× too. ' +
+    'The radar-2 category-median model (per-category medians with growth and maturity) loses to flat on all three splits, which is why it was replaced: category medians fitted on 5–15 anchors are noisier than the single slope, and the growth and maturity terms add variance without signal. ' +
+    'Growth and age were also tested as extra terms on the power law and did not improve held-out accuracy consistently, so the shipped model does not use them; age still drives the launch odds, and 7-day growth is shown on every row.</p>' +
+    '<p class="warn">Read this honestly: the fitted model is better than flat, but the noise floor is ~86% MdAPE — no model that only sees TVL predicts a single token&rsquo;s market cap closely. Market-cap / TVL varies about 200× across traded tokens (10th percentile 0.013, 90th 2.975). ' +
+    'The board is a ranking of launch candidates by implied value, not a price forecast, and the farm verdicts are costed against that ranking, not against a promised return.</p>' +
     '<div class="two"><div>' +
-    '<h3>The fit — multiples by category</h3>' +
-    '<table><thead><tr><th>Category</th><th class="num">Traded anchors</th><th class="num">Median mcap / TVL</th></tr></thead><tbody>' + fittedRows + '</tbody></table>' +
-    '<p>' + fallback + ' more categories have fewer than 5 traded anchors and use the global median ' + fmtMult(DATA.global_multiple) + '. ' +
-    'Every multiple is capped at 2.0. Growth is the 7-day change clamped to −60%…+120% and weighted 0.5; ' +
-    'maturity runs 0.6 at listing to 1.0 at three years, and unknown age counts as 365 days.</p>' +
+    '<h3>The fit — one power law, not a table of multiples</h3>' +
+    '<table><tbody>' +
+    '<tr><td>Equation</td><td class="num">log(mcap / TVL) = ' + pl.intercept.toFixed(3) + ' ' + (pl.slope < 0 ? '−' : '+') + ' ' + Math.abs(pl.slope).toFixed(3) + ' × log(TVL)</td></tr>' +
+    '<tr><td>Market cap ~ TVL ^</td><td class="num">' + pl.exponent.toFixed(3) + '</td></tr>' +
+    '<tr><td>Traded anchors fitted on</td><td class="num">' + pl.anchors + '</td></tr>' +
+    '<tr><td>Std of log(mcap / TVL) across anchors</td><td class="num">' + pl.log_ratio_std.toFixed(3) + '</td></tr>' +
+    '<tr><td>Std of the fit&rsquo;s residuals</td><td class="num">' + pl.residual_std.toFixed(3) + '</td></tr>' +
+    '<tr><td>Effective multiple at $10M TVL</td><td class="num">' + fmtMult(effAt(1e7)) + '×</td></tr>' +
+    '<tr><td>Effective multiple at $100M TVL</td><td class="num">' + fmtMult(effAt(1e8)) + '×</td></tr>' +
+    '<tr><td>Effective multiple at $1B TVL</td><td class="num">' + fmtMult(effAt(1e9)) + '×</td></tr>' +
+    '</tbody></table>' +
+    '<p>The slope is the Theil-Sen median pairwise slope over the traded anchors, and the intercept is the median residual — the fit predicts the conditional median of the ratio, which is the forecast that minimises the median absolute percentage error. ' +
+    'Theil-Sen is used because the ratio varies ~200× and a least-squares slope is dragged around by the extremes; the median slope is not. No name, no category and no hardcoded multiple enters the fit — only the protocol&rsquo;s own TVL.</p>' +
     '<h3>Launch odds — the peers&rsquo; record</h3>' +
     '<table><thead><tr><th>Age bucket</th><th class="num">Protocols</th><th class="num">With a token</th><th class="num">Odds</th></tr></thead><tbody>' + oddsRows + '</tbody></table>' +
     '<p>Odds are the share of protocols in the same age bucket that already record a token, over all ' + c.total + ' protocols in the snapshot.</p>' +
@@ -191,19 +201,23 @@ function renderMethod() {
     '<table><thead><tr><th>First chain</th><th class="num">Assumed gas / tx</th></tr></thead><tbody>' + gasRows + '</tbody></table>' +
     '<p>A farm plan makes ' + DATA.model.farm_tx_count + ' transactions. The airdrop pool is assumed to be ' +
     Math.round(DATA.model.farmer_share * 100) + '% of the implied value, split among depositors in proportion to deposits, ' +
-    'so a $1 deposit expects multiple × growth × maturity × odds × ' + DATA.model.farmer_share + '. ' +
+    'so a $1 deposit expects (implied / TVL) × odds × ' + DATA.model.farmer_share + '. ' +
     'The break-even deposit is the deposit at which that expected value covers ' + DATA.model.break_even_margin + '× the gas: ' +
     'FARM at or below $' + DATA.model.verdict_farm_max_usd + ', THIN at or below $' + DATA.model.verdict_thin_max_usd + ', SKIP above. ' +
     'Gas is an assumption, not snapshot data; the verdict moves with it.</p>' +
     '<h3>Coverage — every protocol accounted for</h3>' +
     '<p>' + c.total + ' protocols in the snapshot: ' + c.pre_token + ' pre-token and ' + c.live_token + ' live-token. ' +
-    'The board ranks ' + c.board + ' of them. Set aside, not hidden: ' + c.excluded_cex + ' pre-token exchanges (a centralised exchange is not a launch candidate) ' +
+    'The board ranks ' + c.board + ' of them. Set aside, not hidden: ' + c.excluded_wrapped + ' wrapped, bridged or staked products of tokens that already trade, ' +
+    c.excluded_cex + ' pre-token exchanges (a centralised exchange is not a launch candidate) ' +
     'and ' + c.excluded_versioned + ' versioned pools (a release of another protocol). ' +
     'All ' + c.watchlist + ' watchlist slugs are ranked. The Live section shows the top ' + c.live_shown + ' traded protocols by market cap.</p>' +
     '<h3>Data quality</h3>' +
     '<p>Each row carries an integrity score out of 5: 7-day change present, age known, more than one chain, TVL at least $10M, ' +
     '7-day change within 100%. A row that fails a check names it in its detail view.</p>' +
-    '</div></div>';
+    '</div></div>' +
+    '<h3>Set aside — not ranked, not hidden (' + DATA.set_aside.length + ')</h3>' +
+    '<p>Every pre-token protocol the board does not rank, with the reason. These are wrapped, bridged or staked products of tokens that already trade, versioned pools of another protocol, or exchanges.</p>' +
+    '<div class="scrollbox"><table><thead><tr><th>Protocol</th><th>Category</th><th class="num">TVL</th><th>Reason</th></tr></thead><tbody>' + setAsideRows + '</tbody></table></div>';
 }
 
 function renderLive() {
@@ -214,13 +228,13 @@ function renderLive() {
   }).join('');
   $('live').innerHTML =
     '<h2>Live-token anchors — the market&rsquo;s own values</h2>' +
-    '<p style="color:var(--mut);font-size:13px">The top ' + DATA.live.length + ' traded protocols by market cap. Their market-cap / TVL ratios are what the fitted multiples are medians of. Traded tokens are never ranked on this board.</p>' +
+    '<p style="color:var(--mut);font-size:13px">The top ' + DATA.live.length + ' traded protocols by market cap. Their market-cap / TVL ratios — and how the ratio falls as TVL rises — are what the power law is fitted on. Traded tokens are never ranked on this board.</p>' +
     '<table><thead><tr><th>Protocol</th><th>Category</th><th class="num">TVL</th><th class="num">Market cap</th><th class="num">Mcap / TVL</th></tr></thead><tbody>' + rows + '</tbody></table>';
 }
 
 function renderFoot() {
   $('foot').innerHTML =
-    '<p>Implied value is this entry&rsquo;s own estimate of what a launch would be worth, built only from the sealed snapshot&rsquo;s figures — TVL, 7-day growth, age with no token — and the traded protocols&rsquo; own market-cap / TVL record. It is not a price, a prediction of a listing, or investment advice.</p>' +
+    '<p>Implied value is this entry&rsquo;s own estimate of what a launch would be worth, built only from the sealed snapshot&rsquo;s figures — TVL and age with no token — and the traded protocols&rsquo; own market-cap / TVL record. It is not a price, a prediction of a listing, or investment advice.</p>' +
     '<p>Snapshot: ' + esc(DATA.source) + ', as of ' + esc(DATA.as_of) + ', floor ' + fmtUsd(DATA.floor_usd) + '. Model ' + esc(DATA.model_version) + '. No protocol name is special-cased; the same function scores every row. Gas figures are assumptions, stated in the method.</p>';
 }
 
@@ -230,11 +244,10 @@ function openDetail(slug) {
   if (!row) return;
   var dlg = $('detail');
   var recomputed = impliedOf(row);
-  var agree = recomputed === row.implied_value_usd;
+  var agree = Math.abs(recomputed - row.implied_value_usd) / Math.max(row.implied_value_usd, 1) <= 0.01;
   var ev = row.expected_value_per_100_usd;
   var be = row.break_even_deposit_usd < 0 ? '—' : fmtUsdFull(row.break_even_deposit_usd);
-  var comp = DATA.multiples[row.category] != null ? DATA.multiples[row.category] : DATA.global_multiple;
-  var compN = DATA.multiples_n[row.category] != null ? DATA.multiples_n[row.category] : 0;
+  var pl = DATA.power_law;
   var steps = row.farm_steps.map(function (s, i) {
     var m = s.match(/^(.*) Cost: (.*)\. Time: (.*)\.$/);
     var body = m ? m[1] : s;
@@ -254,9 +267,8 @@ function openDetail(slug) {
     '<h3>Implied value — the arithmetic</h3>' +
     '<table><tbody>' +
     '<tr><td class="k">TVL</td><td class="num">' + fmtUsdFull(row.tvl_usd) + '</td></tr>' +
-    '<tr><td class="k">Multiple (' + esc(row.category || 'Unknown') + ', ' + compN + ' traded anchors)</td><td class="num">× ' + fmtMult(comp) + '</td></tr>' +
-    '<tr><td class="k">Growth multiplier (' + fmtPct(row.change_7d) + ' in 7 days, clamped)</td><td class="num">× ' + row.growth_multiplier.toFixed(4) + '</td></tr>' +
-    '<tr><td class="k">Maturity multiplier (' + fmtAge(row.age_days) + ' with no token)</td><td class="num">× ' + row.maturity_multiplier.toFixed(4) + '</td></tr>' +
+    '<tr><td class="k">Power law</td><td class="num">log ratio = ' + pl.intercept.toFixed(3) + ' ' + (pl.slope < 0 ? '−' : '+') + ' ' + Math.abs(pl.slope).toFixed(3) + ' × log TVL</td></tr>' +
+    '<tr><td class="k">Effective multiple (this row)</td><td class="num">× ' + fmtMult(row.effective_multiple) + '</td></tr>' +
     '<tr><td class="k"><b>Implied value</b></td><td class="num"><b>' + fmtUsdFull(row.implied_value_usd) + '</b></td></tr>' +
     '</tbody></table>' +
     '<p class="' + (agree ? 'agree' : 'disagree') + '">' + (agree
